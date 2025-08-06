@@ -4,20 +4,22 @@ A secure smart contract for time-locking ERC20 tokens with transferable ownershi
 
 ## Overview
 
-TokenLocker allows users to lock ERC20 tokens for a specified period. Tokens can only be withdrawn after the unlock date has passed. Lock ownership can be transferred to other addresses.
+TokenLocker allows users to lock ERC20 tokens for a specified period. Tokens can only be withdrawn after the unlock date has passed. Lock ownership can be transferred to other addresses. A fee of 0.0025 ETH is required to lock tokens.
 
 ## Core Features
 
 - **Time-locked withdrawals**: Tokens locked until specified timestamp
 - **Transferable ownership**: Locks can be transferred to new owners
+- **Fee mechanism**: 0.0025 ETH fee required for locking tokens
 - **Query functions**: Get locks by user, token, or total amounts
 - **Reentrancy protection**: Secure against reentrancy attacks
 - **Event emission**: Full event tracking for transparency
+- **Fee management**: Owner can update fees and withdraw accumulated fees
 
 ## Contract Functions
 
 ```solidity
-// Lock tokens for specified period
+// Lock tokens for specified period (requires 0.0025 ETH fee)
 lockTokens(address token, uint256 amount, uint256 unlockDate)
 
 // Withdraw tokens after unlock date
@@ -31,6 +33,12 @@ getUserLocks(address user) → uint256[]
 getTokenLocks(address token) → uint256[]
 getLockedAmount(address user, address token) → uint256
 getActiveLocks(address user) → TokenLock[]
+
+// Fee management (owner only)
+updateLockFee(uint256 newFee)
+withdrawFees()
+getLockFee() → uint256
+getAccumulatedFees() → uint256
 ```
 
 ## Development
@@ -50,7 +58,8 @@ npm test
 - ReentrancyGuard protection
 - Access control on withdrawals
 - Zero address validation
-- Comprehensive test coverage (29 tests)
+- Fee validation
+- Comprehensive test coverage (35 tests)
 
 ## License
 
