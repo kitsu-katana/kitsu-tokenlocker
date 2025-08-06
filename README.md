@@ -40,6 +40,11 @@ npm install
 npm test
 ```
 
+## Gas Report
+
+<img width="783" height="578" alt="Screenshot 2025-08-06 at 16 08 38" src="https://github.com/user-attachments/assets/e5669802-5250-445a-8793-df5a5815475c" />
+
+
 ## Security
 
 - ReentrancyGuard protection
