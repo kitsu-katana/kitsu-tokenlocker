@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
  * @title TokenLocker
@@ -20,16 +21,20 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  * - Query locks by user or token
  * - Get total locked amounts
  * - View active (non-withdrawn, non-expired) locks
+ * - Fee mechanism for locking tokens
  * 
  * @author jscrui | https://github.com/jscrui
  * @notice This contract implements a time-locked token system
  * @custom:security-contact security@kitsunine.io
  */
-contract TokenLocker is ReentrancyGuard {
+contract TokenLocker is ReentrancyGuard, Ownable {
     using SafeERC20 for IERC20;
 
     /// @notice The next available lock ID
     uint256 public nextLockId;
+
+    /// @notice Fee required to lock tokens (in wei)
+    uint256 public lockFee;
 
     /**
      * @dev Structure representing a token lock
@@ -65,8 +70,9 @@ contract TokenLocker is ReentrancyGuard {
      * @param token The address of the locked token
      * @param amount The amount of tokens locked
      * @param unlockDate The timestamp when tokens can be withdrawn
+     * @param fee The fee paid for the lock
      */
-    event TokenLocked(uint256 indexed lockId, address indexed user, address indexed token, uint256 amount, uint256 unlockDate);
+    event TokenLocked(uint256 indexed lockId, address indexed user, address indexed token, uint256 amount, uint256 unlockDate, uint256 fee);
     
     /**
      * @dev Emitted when tokens are withdrawn
@@ -84,6 +90,27 @@ contract TokenLocker is ReentrancyGuard {
     event LockTransferred(uint256 indexed lockId, address indexed from, address indexed to);
 
     /**
+     * @dev Emitted when the lock fee is updated
+     * @param oldFee The previous fee amount
+     * @param newFee The new fee amount
+     */
+    event LockFeeUpdated(uint256 oldFee, uint256 newFee);
+
+    /**
+     * @dev Emitted when fees are withdrawn by the owner
+     * @param amount The amount of ETH withdrawn
+     * @param recipient The address that received the fees
+     */
+    event FeesWithdrawn(uint256 amount, address recipient);
+
+    /**
+     * @dev Constructor sets the initial lock fee to 0.0025 ETH
+     */
+    constructor() Ownable(msg.sender) {
+        lockFee = 0.0025 ether; // 0.0025 ETH in wei
+    }
+
+    /**
      * @dev Locks tokens for a specified period of time
      * @param token The address of the ERC20 token to lock
      * @param amount The amount of tokens to lock
@@ -93,12 +120,14 @@ contract TokenLocker is ReentrancyGuard {
      * - `unlockDate` must be in the future
      * - `amount` must be greater than 0
      * - Caller must have approved this contract to spend the tokens
+     * - Caller must send the required fee in ETH
      * 
      * @notice This function transfers tokens from the caller to this contract
      */
-    function lockTokens(address token, uint256 amount, uint256 unlockDate) external nonReentrant {
+    function lockTokens(address token, uint256 amount, uint256 unlockDate) external payable nonReentrant {
         require(unlockDate > block.timestamp, "KITSU_TOKENLOCKER: Unlock date must be in the future");
-        require(amount > 0, "KITSU_TOKENLOCKER: Amount must be > 0"); 
+        require(amount > 0, "KITSU_TOKENLOCKER: Amount must be > 0");
+        require(msg.value == lockFee, "KITSU_TOKENLOCKER: Incorrect fee amount");
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
 
@@ -115,7 +144,7 @@ contract TokenLocker is ReentrancyGuard {
         userLockIds[msg.sender].push(nextLockId);
         tokenLockIds[token].push(nextLockId);
 
-        emit TokenLocked(nextLockId, msg.sender, token, amount, unlockDate);
+        emit TokenLocked(nextLockId, msg.sender, token, amount, unlockDate, lockFee);
         nextLockId++;
     }
 
@@ -247,5 +276,54 @@ contract TokenLocker is ReentrancyGuard {
             }
         }
         return result;
+    }
+
+    /**
+     * @dev Updates the lock fee
+     * @param newFee The new fee amount in wei
+     * 
+     * Requirements:
+     * - Caller must be the contract owner
+     * 
+     * @notice Only the contract owner can update the lock fee
+     */
+    function updateLockFee(uint256 newFee) external onlyOwner {
+        uint256 oldFee = lockFee;
+        lockFee = newFee;
+        emit LockFeeUpdated(oldFee, newFee);
+    }
+
+    /**
+     * @dev Withdraws accumulated fees to the owner
+     * 
+     * Requirements:
+     * - Caller must be the contract owner
+     * - Contract must have ETH balance to withdraw
+     * 
+     * @notice Only the contract owner can withdraw accumulated fees
+     */
+    function withdrawFees() external onlyOwner {
+        uint256 fees = address(this).balance;
+        require(fees > 0, "KITSU_TOKENLOCKER: No fees to withdraw");
+        
+        (bool success, ) = owner().call{value: fees}("");
+        require(success, "KITSU_TOKENLOCKER: Fee withdrawal failed");
+        emit FeesWithdrawn(fees, owner());
+    }
+
+    /**
+     * @dev Returns the current lock fee
+     * @return The current lock fee in wei
+     */
+    function getLockFee() external view returns (uint256) {
+        return lockFee;
+    }
+
+    /**
+     * @dev Returns the total fees accumulated in the contract
+     * @return The total ETH balance of the contract
+     */
+    function getAccumulatedFees() external view returns (uint256) {
+        return address(this).balance;
     }
 }
